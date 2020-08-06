@@ -155,7 +155,7 @@ def main():
 
     :return:
     """
-    epochs = 20
+    epochs = 40
     batch_size = 1000
 
     D = 3000
@@ -167,7 +167,7 @@ def main():
     features = ['user', 'item']
 
     # data_dir = os.path.abspath("{0}/../../Data/fm/ml-100k".format(os.path.abspath(os.path.dirname(os.path.realpath(__file__)))))
-    data_dir = 'D:/python_project/Libfm/data/ml-100k/ml-100k'
+    data_dir = './data/ml-100k/ml-100k'
     x = tf.placeholder('float', shape=[None, D])
     y = tf.placeholder('float', shape=[None, 1])
     model = FM_FTRL(x=x, y=y, p=D, k=k)
@@ -224,6 +224,6 @@ def main():
 #
 #
 if __name__ == '__main__':
-    # main()
-    hash_index = hash_java(str(2) + 'user') % 3000
-    print(hash_index)
+    main()
+    # hash_index = hash_java(str(2) + 'user') % 3000
+    # print(hash_index)
