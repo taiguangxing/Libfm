@@ -3,10 +3,12 @@ from pyspark import SparkContext,SparkConf
 from pyspark.sql import SparkSession
 from pyspark.ml.feature import BucketedRandomProjectionLSH
 from pyspark.ml.linalg import Vectors
-
-spark = SparkSession.builder.appName('test').config('spark.executor.memory','2g').getOrCreate()
-
-
+import numpy as np
+from pyspark.sql.types import IntegerType
+import pandas as pd
+spark = SparkSession.builder.appName('LSH').config('spark.executor.memory','2g').getOrCreate()
+# pd_data = pd.read_csv('./data/toutiao_title_bert_feature.csv')
+# pd_data['features'] = pd_data.applymap([])
 # sc = SparkContext(appName="read_mysql", master='local')
 # sc.setLogLevel("ERROR")  #
 # sqlContext = SQLContext(sc)
@@ -15,46 +17,33 @@ spark = SparkSession.builder.appName('test').config('spark.executor.memory','2g'
 # testDF.registerTempTable('tmp_table')
 # sqlContext.sql('select * from tmp_table').show()
 #
-# jdbcDf = spark.read.format('jdbc').options(url = 'jdbc:mysql://localhost:3306/rec',driver = 'com.mysql.jdbc.Driver',dbtable ="rec_ori_article",user = 'root',password ='root').load()
+jdbcDf = spark.read.format('jdbc').options(url = 'jdbc:mysql://localhost:3306/rec',driver = 'com.mysql.jdbc.Driver',dbtable ="rec_article_pool",user = 'root',password ='root').load()
 # jdbcDf.show()
-
-
-dfA = spark.createDataFrame([(0, Vectors.dense(1.0, 1.0)),
-      (1, Vectors.dense(1.0, -1.0)),
-      (2, Vectors.dense(-1.0, -1.0)),
-      (3, Vectors.dense(-1.0, 1.0))]).toDF('id','features')
-
+dfA=jdbcDf.selectExpr('id','title_feature as features')
 dfA.show()
+# dfA = dfA.withColumn('id',dfA['id'].ast(IntegerType()))
+# dfA.show()
+def trans_str_to_vector(row):
+        return row.id,[float(x) for x in np.array(np.mat(row.features))[0]]
 
-dfB = spark.createDataFrame([
-    (4, Vectors.dense(1.0, 1.0)),
-    (5, Vectors.dense(-1.0, 0.0)),
-    (6, Vectors.dense(0.0, 1.0)),
-    (7, Vectors.dense(0.0, -1.0))
-]).toDF('id','features')
+dfA = dfA.rdd.map(trans_str_to_vector).toDF(['id','features'])
+print(dfA)
+def _trans_to_vetor_dense(partitions):
+        for row in partitions:
+                yield row.id,Vectors.dense(row.features)
 
-
-
-def mul_vector(row):
-    return row.id,2*row.features
-
-dfA=dfA.rdd.map(mul_vector).toDF(['id','features'])
+dfA = dfA.rdd.mapPartitions(_trans_to_vetor_dense).toDF(['id','features'])
 dfA.show()
+print(dfA)
 
-
-#
-# brp = BucketedRandomProjectionLSH().setInputCol('features').setOutputCol('hashes').setNumHashTables(3).setBucketLength(2.0)
-# model = brp.fit(dfA)
-# model.transform(dfA).show()
-#
-# resDF = model.approxSimilarityJoin(dfA, dfB, 2.5, "EuclideanDistance").select('datasetA.id','datasetB.id','EuclideanDistance','datasetA.features','datasetB.features')
-# resDF.describ()
-#
-# resDF = resDF.selectExpr('datasetA.id as id1','datasetB.id as id2','round(EuclideanDistance)','datasetA.features')
-# resDF.show()
-#
-#     # .toDF('dfaId','dfbId','EuclideanDistance')
+brp = BucketedRandomProjectionLSH().setInputCol('features').setOutputCol('hashes').setNumHashTables(4).setBucketLength(10)
+model = brp.fit(dfA)
+model.transform(dfA).show()
+# #
+resDF = model.approxSimilarityJoin(dfA, dfA, 20.0, "EuclideanDistance").selectExpr('int(datasetA.id) as id1','int(datasetB.id) as id2','EuclideanDistance') #datasetA.features'
+resDF.sort("EuclideanDistance").show()
+resDF.count()
+resDF= resDF.withColumnRenamed('title_feature','features')
 #
 # resDF.write.jdbc('jdbc:mysql://localhost:3306/rec?useSSL=false','sim_vector',mode = 'overwrite',properties={"user":'root',"password":"root"})
-#
-# spark.stop()
+spark.stop()
